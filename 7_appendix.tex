@@ -129,10 +129,10 @@ Together, Tables~\ref{tab:streamingbench_train_ablation}--\ref{tab:offline_compo
   \label{tab:ovobench_train_ablation}
 \end{table*}
 
-\begin{table}[!t]
+\begin{table*}[!t]
   \centering
   \small
-  \resizebox{\columnwidth}{!}{
+  \setlength{\tabcolsep}{5pt}
   \begin{tabular}{@{}llllrrrr@{}}
     \hline
     Variant & Memory & Retrieval & Recall & EPM & ASI & HLD & Avg. BT \\
@@ -143,10 +143,10 @@ Together, Tables~\ref{tab:streamingbench_train_ablation}--\ref{tab:offline_compo
     w/o temporal retrieval & Yes & No & No & 54.9 & 52.7 & 58.6 & 55.5 \\
     memory only & Yes & No & No & 46.8 & 52.7 & 46.8 & 48.2 \\
     \hline
-  \end{tabular}}
+  \end{tabular}
   \caption{OVO-Bench BT component ablation over EPM, ASI, and HLD under the official 631-task weighting.}
   \label{tab:ovo_bt_component_ablation}
-\end{table}
+\end{table*}
 
 \begin{table*}[!t]
   \centering
