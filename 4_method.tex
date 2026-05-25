@@ -1,0 +1,194 @@
+\section{Method}
+
+\begin{figure*}[t]
+  \centering
+  \includegraphics[width=\textwidth]{figures/figure_method_pipeline.png}
+  \caption{Overview of Watch-Think-Interact. At each stream step, the agent watches the current chunk, updates a thinking state, selects silence, response, or recall, and writes compact time-indexed memory at context boundaries; Stream-GDPO optimizes the resulting streaming trajectories.}
+  \label{fig:method_overview}
+\end{figure*}
+
+\subsection{Problem Definition}
+
+We study online multi-turn streaming video reasoning.
+A video arrives as an ordered stream of chunks:
+\begin{equation}
+  V=(c_1,\ldots,c_T).
+\end{equation}
+At step \(t\), the model can condition only on the observed prefix \(c_{\le t}\), so future chunks are unavailable.
+
+The same stream may contain multiple timed user questions:
+\begin{equation}
+  \mathcal Q=\{(q_r,\tau_r,\alpha_r)\}_{r=1}^{R}.
+\end{equation}
+Here \(\tau_r\) is the question timestamp and \(\alpha_r\) is the answer timestamp used for data construction and evaluation.
+Questions are ordered by timestamp, \(1\le\tau_1\le\cdots\le\tau_R\), and each answer timestamp satisfies \(\tau_r\le\alpha_r\le T\).
+The answer timestamp marks when sufficient visual evidence is available, but it is not given to the model at inference time.
+For each question, the model outputs an answer \(\hat y_r\) at response time \(\hat t_r\ge\tau_r\).
+The goal is to produce a visually grounded answer at a valid response time.
+A response before \(\alpha_r\) is not valid under strict streaming causality, while a valid response should be supported by \(c_{\le \hat t_r}\).
+
+\subsection{Watch-Think-Interact Framework}
+
+Given the streaming problem above, we instantiate the model as an online multimodal agent.
+At step \(t\), the agent receives the newly arrived chunk \(c_t\) and acts under the following state:
+\begin{equation}
+  s_t=(c_t,W_t,M_t,Q_t,H_t).
+\end{equation}
+Here \(W_t\) is the active visual window, \(M_t\) is the compact textual memory, \(Q_t\) is the active question set, and \(H_t\) is the interaction history.
+Historical evidence outside the active window is carried by time-indexed memory lines with evidence boundaries, rather than being fully inserted into the model context at every step.
+
+Each step combines a streaming thinking update with an interaction decision.
+The model first emits a short update \(z_t\) and then selects one interaction action:
+\begin{equation}
+  a_t\in\mathcal A_{\mathrm{int}}
+  =\{\mathrm{silence},\mathrm{response}(q_r,y)\}.
+\end{equation}
+The action \(\mathrm{silence}\) delays output, while \(\mathrm{response}\) commits an answer to the current question.
+
+When past visual evidence is needed, the agent may invoke a recall tool to inspect a previously observed interval.
+The call \(\mathrm{recall}(\tau_s,\tau_e)\) is valid only when \(\tau_s\le\tau_e<t\).
+The environment returns evidence from this interval, which is added to the current decision context before the agent either answers or remains silent at that step.
+
+At a memory boundary \(b\), let \(Z_b\) collect the streaming records since the previous boundary.
+The model rewrites the pre-update memory into a new compact memory:
+\begin{equation}
+  M_{\mathrm{post}}=\operatorname{Compact}_{\theta}(M_{\mathrm{pre}},Z_b).
+\end{equation}
+The memory size is bounded by \(\lvert M_{\mathrm{post}}\rvert\le B_M\).
+Each memory line stores a concise semantic note with its video time range, providing a structured index for later recall.
+This keeps the resident state compact while preserving time-indexed entries for later recall-based evidence inspection.
+
+Together, these operations define a bounded online loop in which the agent consumes each chunk once, maintains time-indexed memory beyond the active window, and recalls past intervals only when needed for the current decision at that step.
+
+\subsection{Masked Supervised Fine-Tuning}
+
+The supervised stage aligns training with the bounded context used by the online agent~\citep{streamingvlm2026}.
+At step \(t\), SFT uses the same online state as inference, while the dense visual context is limited to the recent window
+\begin{equation}
+  W_t=\{c_{\max(1,t-K_v+1)},\ldots,c_t\},
+\end{equation}
+where \(K_v\) is the visual window size.
+Compact memory \(M_t\), active questions \(Q_t\), and interaction history \(H_t\) provide the textual state, so each target is conditioned on the state available at inference rather than on a full video prefix that the model will not retain.
+
+For each stream, we serialize stream inputs, assistant outputs, and environment observations in temporal order, so each assistant target is trained under the online prefix available at its stream step.
+To train autoregressively on this sequence, we apply a stream-causal mask under which each assistant token can attend only to tokens available from earlier stream steps and to its causal prefix.
+
+Environment outputs are used only as conditioning context for later assistant targets.
+Accordingly, a token-wise label mask limits supervised loss to assistant-generated tokens.
+Because action targets are sparse and state-update spans are longer, a single token average can overemphasize frequent or long targets.
+We average valid token losses separately for the action and state-update groups, denoted by \(\bar\ell_{\mathrm{act}}\) and \(\bar\ell_{\mathrm{state}}\).
+The action group contains silence, response, and recall targets, while the state-update group contains thinking and compact-memory targets.
+The bucket-weighted SFT objective is
+\begin{equation}
+  \mathcal L_{\mathrm{SFT}}(\theta)
+  =
+  \lambda_{\mathrm{act}}\bar\ell_{\mathrm{act}}
+  +
+  \lambda_{\mathrm{state}}\bar\ell_{\mathrm{state}}.
+\end{equation}
+This stage trains the bounded-context protocol.
+
+\begin{figure*}[t]
+  \centering
+  \includegraphics[width=\textwidth]{figures/figure_data_pipeline.png}
+  \caption{ChronoInteract-82K construction pipeline. Videos are standardized, chunk-level evidence chains are aligned, evidence-grounded QAs are generated, query and answer times are placed on the streaming timeline, and QA quality and causal consistency are verified.}
+  \label{fig:data_pipeline}
+\end{figure*}
+
+\input{tables_ovo_offline_main}
+
+\subsection{Stream-GDPO Reinforcement Learning}
+
+After masked SFT, Stream-GDPO trains the policy in the same chunk-level environment used at inference.
+Each rollout contains one video stream with one or more timed questions.
+The policy acts from the current online state, while chunk arrival and recall returns are treated as environment feedback.
+
+Stream-GDPO uses question-level rewards for answer outcome, format validity, and recall use, together with a rollout-level compact-memory reward.
+The answer outcome is computed by a form-aware verifier
+\begin{equation}
+  R_{\mathrm{out}}^{i,q}
+  =
+  \max_{y\in\mathcal Y_q}
+  \mathbb I\!\left(\operatorname{match}(\hat y_{i,q},y)\right),
+\end{equation}
+where \(\mathcal Y_q\) is the valid-answer set and timing validity with respect to \(\alpha_q\) is included in the verifier.
+\(R_{\mathrm{fmt}}\) checks whether actions follow the streaming protocol.
+
+Let \(u_{i,q}\) indicate whether rollout \(i\) recalls evidence for \(q\), and let \(\mathcal Q_{\mathrm{BT}}\) denote Backward Tracing questions.
+The recall-tool reward is
+\begin{equation}
+  R_{\mathrm{tool}}^{i,q}
+  =
+  \mathbb I(q\in\mathcal Q_{\mathrm{BT}})
+  \mathbb I(u_{i,q}=1).
+\end{equation}
+
+For compact-memory writing, the reward measures whether an update improves the stream memory.
+Let \(S_{\mathrm{time}}(M)\) score the time indexing quality of memory \(M\), and let \(S_{\mathrm{keep}}(M)\) score its retention of salient stream facts.
+For an update \(M_{\mathrm{pre}}^i\to M_{\mathrm{post}}^i\), we define
+\begin{equation}
+  \begin{aligned}
+  R_{\mathrm{mem}}^i
+  =
+  \frac{1}{2}\Big[
+  &S_{\mathrm{time}}(M_{\mathrm{post}}^i)-S_{\mathrm{time}}(M_{\mathrm{pre}}^i)\\
+  &+S_{\mathrm{keep}}(M_{\mathrm{post}}^i)-S_{\mathrm{keep}}(M_{\mathrm{pre}}^i)
+  \Big].
+  \end{aligned}
+\end{equation}
+Thus, compact-memory quality is rewarded as an update difference, not as an absolute score.
+
+Let \(R_{\mathrm{out}}^i\) and \(R_{\mathrm{fmt}}^i\) denote the averaged outcome and format rewards over questions in rollout \(i\).
+Let \(R_{\mathrm{tool}}^i\) denote the averaged recall-tool reward.
+The rollout reward combines the four terms
+\begin{equation}
+  \begin{aligned}
+  R_i={}&
+  R_{\mathrm{out}}^i
+  +R_{\mathrm{fmt}}^i\\
+  &+\lambda_{\mathrm{tool}}R_{\mathrm{tool}}^i
+  +\lambda_{\mathrm{mem}}R_{\mathrm{mem}}^i.
+  \end{aligned}
+\end{equation}
+The compact-memory reward remains a rollout-level term because it is not question-specific.
+
+Within each rollout group, Stream-GDPO normalizes the rollout rewards \(\{R_i\}\) to obtain a group-relative trajectory advantage \(A_i\).
+We assign \(A_i\) to the assistant action turns selected for policy optimization from the same rollout.
+The policy is optimized with the clipped objective
+\begin{equation}
+  \mathcal J_{\mathrm{GDPO}}(\theta)
+  =
+  \mathbb E_{i,j}\!\left[
+  \min(\rho_{i,j}A_i,\tilde\rho_{i,j}A_i)
+  -\beta D_{i,j}
+  \right].
+\end{equation}
+\(\tilde\rho_{i,j}\) clips \(\rho_{i,j}\) to \([1-\epsilon,1+\epsilon]\), \(\rho_{i,j}\) is the action-turn probability ratio between \(\pi_\theta\) and \(\pi_{\theta_{\mathrm{old}}}\), and \(D_{i,j}\) is the KL penalty to the reference policy at state \(s_{i,j}\).
+We minimize \(\mathcal L_{\mathrm{GDPO}}=-\mathcal J_{\mathrm{GDPO}}\).
+This keeps credit assignment at the trajectory level, without estimating separate turn- or token-level advantages.
+
+\section{ChronoInteract-82K}
+\label{sec:data}
+
+Prior online video benchmarks and streaming instruction datasets define timestamped queries, multi-turn interaction, proactive responses, and streaming task annotations~\citep{ovobench2025,svbench2025,streambridge2025,streamo2026}.
+Building on this setting, we construct ChronoInteract-82K, a time-aware dataset for long-horizon multi-turn streaming video reasoning.
+It contains 82,335 finalized questions in 4,812 streaming trajectories.
+Each sample aligns video chunks, supporting evidence intervals, query time, earliest answerable moment, and the causal context available at that moment.
+As shown in Figure~\ref{fig:data_pipeline}, our pipeline extracts temporal evidence, generates evidence-grounded questions, places each query and answerable moment on the streaming timeline, and verifies causal consistency before retention.
+
+\paragraph{Temporal evidence extraction.}
+We first filter videos for clear visual content and temporally locatable events.
+For each retained video, we extract chunk-level evidence and link facts that persist or change across chunks.
+This yields minimal supporting intervals for evidence-chain selection and time-anchored question generation.
+
+\paragraph{Candidate question generation.}
+Given the aligned evidence, we use Qwen3.5-397B to generate questions and reference answers from local facts and cross-chunk evidence chains.
+The candidates cover immediate perception, historical evidence, temporal progression, and proactive interaction, so each trajectory includes both current-prefix questions and questions requiring long-range state maintenance.
+
+\paragraph{Query-time and answer-time placement.}
+Following timestamped online-video protocols~\citep{ovobench2025,svbench2025,streambridge2025}, we then convert each candidate into a streaming sample by assigning a query timestamp and an answerable timestamp based on its supporting evidence interval.
+Real-Time samples are answerable at the query time from the current visible prefix.
+Backward Tracing samples are also answerable at the query time, but their supporting evidence lies in previously observed chunks and therefore tests history maintenance and recall.
+Proactive samples are not answerable when the query appears and require the model to wait until the earliest answerable moment, when decisive future evidence has arrived.
+We retain a sample only if its answer is grounded in the causal context available at the answerable moment.
+Appendix~\ref{app:data_stats} reports the data statistics and question distribution in detail.

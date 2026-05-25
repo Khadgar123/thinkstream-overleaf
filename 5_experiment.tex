@@ -1,0 +1,112 @@
+\section{Experiments}
+
+\subsection{Experimental Setup}
+
+\input{tables_streaming_offline_main}
+
+\noindent \textbf{Implementation Details.}
+WTI is initialized from Qwen3-VL-8B-Instruct~\citep{qwen3vl2025}.
+Masked SFT trains on chunk-level trajectories with the vision encoder frozen and updates the language model and multimodal projector at a learning rate of $1\times10^{-5}$.
+Stream-GDPO starts from the SFT checkpoint and uses veRL~\citep{sheng2024hybridflow} for one epoch on 8 H20 GPUs, with prompt batch size 64, 4 rollouts per prompt, actor learning rate $1\times10^{-5}$, asymmetric clipping with $\epsilon_{\mathrm{low}}=0.2$ and $\epsilon_{\mathrm{high}}=0.28$, and action-branch loss weight 0.15.
+Videos are streamed as 1-second chunks at 2 FPS, and compact-and-reprefill is triggered at the active-context boundary during inference.
+
+\noindent \textbf{Benchmarks.}
+We evaluate streaming understanding on StreamingBench and OVO-Bench, reporting the real-time visual understanding split for StreamingBench and Real-Time, Backward, Forward, and weighted overall accuracy for OVO-Bench~\citep{streamingbench2024,ovobench2025}.
+We further evaluate Video-MME~\citep{videomme2025}, MLVU~\citep{mlvu2024}, and LongVideoBench~\citep{longvideobench2024} with their official aggregate metrics to test general long-video ability beyond streaming benchmarks.
+
+\noindent \textbf{Baselines.}
+We compare with proprietary models, offline/static Video-LLMs, and online or streaming Video-LLMs.
+The baselines include GPT-4o and Gemini-1.5-Pro~\citep{openai_gpt4o2024,gemini15_2024}; LongVA, LongVU, LLaVA-series models, Qwen2.5-VL, Qwen3-VL, and MiniCPM-o~\citep{longva2024,longvu2025,llavaonevision2024,llavavideo2024,llavanextvideo2024,qwen25vl2025,qwen3vl2025,minicpmo45_2026}; and VideoLLM-Online, Dispider, ViSpeak, TimeChat-Online, Flash-VStream, StreamBridge, StreamForest, and Streamo~\citep{videollm_online2024,dispider2025,vispeak2025,timechat2024,flashvstream2025,streambridge2025,streamforest2025,streamo2026}.
+All online evaluations are causal, and offline/static baselines are restricted to the observed prefix in online benchmarks following the benchmark protocol.
+
+\subsection{Main Results}
+
+We first evaluate whether WTI handles the three streaming regimes defined in Section~\ref{sec:data}: Real-Time, Backward Tracing, and Forward questions.
+On OVO-Bench, WTI reaches 76.9\% on Real-Time, 73.4\% on Backward, and 70.0\% on Forward, yielding 73.6\% overall accuracy.
+The Backward result reflects the benefit of time-indexed memory and recall over previously observed chunks.
+The Real-Time and Forward results show that these memory operations do not weaken current-prefix perception or delayed answering.
+This matches WTI's online design: active-window perception and multi-turn state handle the ongoing stream, while recall is invoked only when past evidence is needed.
+Compared with open-source streaming baselines, WTI obtains the best OVO overall score, above StreamBridge-7B at 62.6\% and ViSpeak-7B at 61.1\%.
+
+StreamingBench further supports this result.
+WTI reaches 83.3\% average accuracy, compared with 77.3\% for StreamForest-7B and 77.0\% for StreamBridge-7B.
+WTI leads on OP, CS, ATP, EU, TR, SU, and ACP, suggesting strong active-window perception and temporal state tracking; CT remains the main weak category.
+On offline long-video benchmarks, WTI obtains 66.9\% on Video-MME, 58.2\% on Video-MME Long, and 62.9\% on LongVideoBench, while matching StreamForest-7B on MLVU with 69.9\% vs. 70.0\%.
+Overall, WTI improves history-dependent reasoning through compact memory and recall while preserving current-prefix and Forward performance through its multi-turn online state over the stream.
+
+\begin{figure*}[t]
+  \centering
+  \includegraphics[width=0.98\textwidth]{figures/ablation/gspo_gdpo_step_comparison.pdf}
+  \caption{Training-time GSPO/GDPO diagnostics. Panels report outcome accuracy, recall trigger rate, request range hit, and memory quality; faint and bold curves show raw and rolling values.}
+  \label{fig:gspo_gdpo_step_comparison}
+  \vspace{0.2em}
+  \makebox[\textwidth][c]{%
+  \begin{minipage}[t]{\dimexpr(\textwidth-\columnsep)/2\relax}
+    \vspace{0pt}
+    \centering
+    \scriptsize
+    \renewcommand{\arraystretch}{1.12}
+    \setlength{\tabcolsep}{2.0pt}
+    \makebox[\linewidth][c]{\resizebox{0.98\linewidth}{!}{%
+    \begin{tabular}{@{}l|cccccccc@{}}
+      \hline
+      \multirow{2}{*}{\textbf{Config}} & \multirow{2}{*}{\textbf{Streaming}} & \multicolumn{4}{c}{\textbf{OVO-Bench}} & \multicolumn{3}{c}{\textbf{Long-video}} \\
+      \cline{3-6}\cline{7-9}
+      & & \textbf{RT} & \textbf{BT} & \textbf{FT} & \textbf{Avg.} & \textbf{V-MME} & \textbf{MLVU} & \textbf{LVB} \\
+      \hline
+      Base model & 74.1 & 64.7 & 54.4 & 63.5 & 61.4 & 63.5 & 66.7 & 60.7 \\
+      + SFT & 75.3 & 74.4 & 52.9 & 43.0 & 58.0 & 64.7 & 67.6 & 59.8 \\
+      + GSPO & 80.0 & 76.8 & 58.9 & 51.8 & 63.6 & 65.6 & 68.7 & 61.7 \\
+      \rowcolor{softblue}
+      + GDPO & \textbf{83.3} & \textbf{76.9} & \textbf{73.4} & \textbf{70.0} & \textbf{73.6} & \textbf{66.9} & \textbf{69.9} & \textbf{62.9} \\
+      \hline
+    \end{tabular}}}
+    \captionof{table}{Training objective ablation.}
+    \label{tab:training_objective_ablation}
+  \end{minipage}%
+  \hspace{\columnsep}%
+  \begin{minipage}[t]{\dimexpr(\textwidth-\columnsep)/2\relax}
+    \vspace{0pt}
+    \centering
+    \scriptsize
+    \renewcommand{\arraystretch}{1.12}
+    \setlength{\tabcolsep}{2.0pt}
+    \makebox[\linewidth][c]{%
+    \begin{tabular}{@{}lcccc@{}}
+      \hline
+      \textbf{Variant} & \textbf{OVO-BT} & \textbf{V-MME} & \textbf{MLVU} & \textbf{LVB} \\
+      \hline
+      \rowcolor{softblue}
+      Full & 73.4 & 66.9 & 69.9 & 62.9 \\
+      w/o memory & 62.8 & 63.5 & 44.7 & 61.6 \\
+      w/o recall & 55.5 & 48.3 & 54.2 & 57.9 \\
+      memory only & 48.2 & 47.7 & 46.5 & 57.1 \\
+      \hline
+    \end{tabular}}
+    \captionof{table}{Component ablation summary.}
+    \label{tab:component_ablation_summary}
+  \end{minipage}%
+  }
+\end{figure*}
+
+\FloatBarrier
+
+\subsection{Ablations}
+
+Table~\ref{tab:training_objective_ablation} separates protocol initialization from trajectory-level policy optimization.
+Masked SFT raises StreamingBench from 74.1\% to 75.3\% and OVO-RT from 64.7\% to 74.4\%, showing that the model learns the basic action format and recent-prefix perception.
+However, OVO overall drops from 61.4\% to 58.0\%, and OVO-FT drops from 63.5\% to 43.0\%.
+This indicates that imitation alone does not sufficiently optimize recall timing, compact-memory quality, or exact delayed answering for future-dependent queries.
+
+Figure~\ref{fig:gspo_gdpo_step_comparison} explains why Stream-GDPO improves this behavior over GSPO.
+Although raw curves are noisy, GDPO maintains stronger recall triggering, request-range hit rate, and memory quality.
+Higher memory quality suggests less information loss during compression, while better range hits mean recall localizes support intervals more precisely.
+Accordingly, GDPO raises OVO-BT from 58.9\% to 73.4\% and OVO-FT from 51.8\% to 70.0\% over GSPO, lifting the overall score to 73.6\%.
+
+Table~\ref{tab:component_ablation_summary} shows that compact memory and recall are complementary rather than interchangeable.
+Removing memory lowers OVO-BT from 73.4\% to 62.8\%, while removing recall lowers it to 55.5\%; the memory-only variant reaches only 48.2\%.
+Thus, memory lines are useful as compact indices, but the model still needs recall to reopen visual evidence for fine-grained historical questions.
+The offline ablations follow the same pattern, with w/o recall reducing Video-MME from 66.9\% to 48.3\% and w/o memory reducing MLVU from 69.9\% to 44.7\%.
+Together, the ablations show that WTI works because SFT builds the protocol, GDPO trains the online policy, memory preserves bounded history, and recall restores precise evidence when needed.
+
+\FloatBarrier

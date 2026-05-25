@@ -1,0 +1,23 @@
+\section{Related Work}
+
+\paragraph{Streaming Video Understanding.}
+Video-LLMs have progressed from short offline clips to long-video and temporal reasoning benchmarks, where the full video is typically available before inference~\citep{mvbench2024,longvideobench2024,videomme2025}.
+Recent online benchmarks instead evaluate prefix-only answering, timestamped queries, and temporal multi-turn interaction over a stream~\citep{ovobench2025,ovbench2025,svbench2025}.
+Streaming systems further adapt Video-LLMs to continuous inputs through response-state modeling and feedback policies~\citep{videollm_online2024,dispider2025}.
+Other work studies proactive interaction and streaming instruction data for online video dialogue~\citep{streambridge2025,streamo2026}.
+These works establish when a model should answer from the observed prefix.
+Our focus is complementary: later turns may require source-linked evidence that has already left the active visual window.
+
+\paragraph{Long-Stream Memory.}
+Another line of work reduces the cost of long or unbounded video streams.
+Visual-token and hierarchical compression reduce dense video context~\citep{longvu2025,videochatflash2026}.
+Streaming inference methods maintain compact KV states or recurrent windows~\citep{streamingvlm2026,flashvstream2025}.
+Event-memory methods store persistent event structures~\citep{streamforest2025}.
+These mechanisms keep long streams tractable, but their histories are usually optimized for forward continuation.
+They are less suited to later questions that need to identify when an earlier detail occurred and reload the corresponding visual evidence.
+Watch-Think-Interact therefore makes compact memory time-indexed and recallable.
+
+\paragraph{Agentic Multimodal Reasoning.}
+Agentic multimodal models treat evidence acquisition as part of the reasoning policy, using tools or additional visual inspection during inference~\citep{deepeyes2026,deepeyesv22026}.
+Memory-augmented agents similarly learn to update or revisit compact memories for long-context reasoning~\citep{memagent2026,rememr12026}.
+Watch-Think-Interact brings these ideas into streaming video by jointly deciding whether to wait, answer, recall time-bounded history, or transfer compact state as chunks arrive online.

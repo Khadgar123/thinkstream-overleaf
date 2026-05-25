@@ -1,0 +1,10 @@
+\section*{Limitations}
+
+WTI makes long streams tractable with compact memory and time-bounded recall, but these operations are not lossless.
+Imprecise memory lines or recall ranges may still miss small objects, brief actions, or subtle temporal order.
+
+Our experiments use chunked streams and public benchmarks.
+Although they cover Real-Time, Backward, Forward, and long-video reasoning, they do not fully capture high frame rates, multi-camera input, noisy user queries, audio-rich scenes, or safety-critical deployment.
+Future work should measure latency, memory growth, interruptions, and longer live-session failures.
+
+Verifier rewards may inherit data-construction errors; improving robustness remains important.

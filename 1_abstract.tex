@@ -1,0 +1,10 @@
+\begin{abstract}
+Streaming video assistants must reason while a stream unfolds, answering from observed prefixes rather than completed clips.
+This setting is challenging because frames arrive continuously, queries arise asynchronously, future frames are unavailable, and inference must remain low-latency.
+Existing streaming Video-LLMs mainly learn when to respond from the active window, while compression methods keep long inputs tractable but may discard early evidence before later turns reveal its relevance.
+We introduce Watch-Think-Interact (WTI), an end-to-end framework for long-horizon multi-turn streaming video reasoning with bounded context.
+As the stream unfolds, WTI maintains a chunk-level thinking state and learns to stay silent, answer, or recall time-bounded evidence outside the active visual window.
+When context reaches its limit, WTI rewrites observed history into compact time-indexed memory lines, allowing reasoning to continue over potentially unbounded streams.
+To train this behavior, we construct ChronoInteract-82K and combine supervised initialization with Stream-GDPO to optimize correctness, timing, evidence use, and long-range history maintenance.
+Experiments show that WTI achieves state-of-the-art streaming performance, reaching 83.3\% on StreamingBench and 73.6\% on OVO-Bench while preserving competitive long-video understanding across benchmarks.
+\end{abstract}
