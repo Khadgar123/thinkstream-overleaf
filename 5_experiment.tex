@@ -55,8 +55,8 @@ Overall, WTI improves history-dependent reasoning through compact memory and rec
       & & \textbf{RT} & \textbf{BT} & \textbf{FT} & \textbf{Avg.} & \textbf{V-MME} & \textbf{MLVU} & \textbf{LVB} \\
       \hline
       Base model & 74.1 & 64.7 & 54.4 & 63.5 & 61.4 & 63.5 & 66.7 & 60.7 \\
-      + SFT & 75.3 & 74.4 & 52.9 & 43.0 & 58.0 & 64.7 & 67.6 & 59.8 \\
-      + GSPO & 80.0 & 76.8 & 58.9 & 51.8 & 63.6 & 65.6 & 68.7 & 61.7 \\
+      + SFT & 75.3 & 74.2 & 60.3 & 60.9 & 65.7 & 64.7 & 67.6 & 59.8 \\
+      + GSPO & 80.0 & 76.2 & 65.3 & 60.7 & 67.8 & 65.6 & 68.7 & 61.7 \\
       \rowcolor{softblue}
       + GDPO & \textbf{83.3} & \textbf{76.9} & \textbf{73.4} & \textbf{70.0} & \textbf{73.6} & \textbf{66.9} & \textbf{69.9} & \textbf{62.9} \\
       \hline
@@ -89,19 +89,17 @@ Overall, WTI improves history-dependent reasoning through compact memory and rec
   }
 \end{figure*}
 
-\FloatBarrier
-
 \subsection{Ablations}
 
 Table~\ref{tab:training_objective_ablation} separates protocol initialization from trajectory-level policy optimization.
-Masked SFT raises StreamingBench from 74.1\% to 75.3\% and OVO-RT from 64.7\% to 74.4\%, showing that the model learns the basic action format and recent-prefix perception.
-However, OVO overall drops from 61.4\% to 58.0\%, and OVO-FT drops from 63.5\% to 43.0\%.
-This indicates that imitation alone does not sufficiently optimize recall timing, compact-memory quality, or exact delayed answering for future-dependent queries.
+Masked SFT raises StreamingBench from 74.1\% to 75.3\% and OVO-RT from 64.7\% to 74.2\%, showing that the model learns the basic action format and recent-prefix perception.
+However, OVO-BT improves more modestly to 60.3\%, and OVO-FT reaches 60.9\%, below the base model's 63.5\%.
+This indicates that imitation alone improves recent-prefix perception but does not sufficiently optimize recall timing, compact-memory quality, or exact delayed answering for future-dependent queries.
 
 Figure~\ref{fig:gspo_gdpo_step_comparison} explains why Stream-GDPO improves this behavior over GSPO.
 Although raw curves are noisy, GDPO maintains stronger recall triggering, request-range hit rate, and memory quality.
 Higher memory quality suggests less information loss during compression, while better range hits mean recall localizes support intervals more precisely.
-Accordingly, GDPO raises OVO-BT from 58.9\% to 73.4\% and OVO-FT from 51.8\% to 70.0\% over GSPO, lifting the overall score to 73.6\%.
+Accordingly, GDPO raises OVO-BT from 65.3\% to 73.4\% and OVO-FT from 60.7\% to 70.0\% over GSPO, lifting the overall score to 73.6\%.
 
 Table~\ref{tab:component_ablation_summary} shows that compact memory and recall are complementary rather than interchangeable.
 Removing memory lowers OVO-BT from 73.4\% to 62.8\%, while removing recall lowers it to 55.5\%; the memory-only variant reaches only 48.2\%.

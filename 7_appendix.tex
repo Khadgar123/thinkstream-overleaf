@@ -1,84 +1,86 @@
 \appendix
 
 \input{appendix_data_stats}
-\FloatBarrier
 
-\section{Prompts, Rewards, and Training Details}
-\label{app:implementation}
+\section{Streaming Protocol and Prompts}
+\label{app:protocol_prompts}
 
-\paragraph{Prompt contract.}
+\paragraph{Streaming protocol.}
 WTI uses the same message contract for SFT, RL rollout, and evaluation.
 Each current visual turn contains the timestamp \texttt{<t=N>}, the current 1-second video chunk, an optional \texttt{<active\_query>} block, and an optional \texttt{<response\_history>} block.
 Historical state is carried as compact memory lines \texttt{<m t="start-end">summary</m>}.
 If a trajectory resumes from compact memory, these \texttt{<m>} lines appear in a separate user turn, followed by the assistant acknowledgement \texttt{Memory loaded.}; the next user turn then starts with \texttt{<t=N>} and current frames.
 This keeps prompt-side state aligned with the bounded KV-window rollout: current chunks are visual, while older evidence is either memory text or retrieved by recall.
 
-\paragraph{System instruction.}
-The streaming system prompt requires exactly one action per assistant turn.
-The assistant must open with \texttt{<think>...</think>} and then end with one terminal action: \texttt{</Silence>} when no query is ready, \texttt{</Response> answer} when the active query is answerable, or a Qwen tool call to \texttt{recall}.
-The prompt states that recall is exceptional: it is allowed only when the active query needs older visual evidence that is strictly earlier than the current chunk and is not already available from current frames, compact memory, response history, or a previous recall result.
-For future/proactive questions, the prompt explicitly instructs the model to stay silent until the requested visual trigger or event completion is observed.
+\paragraph{Action and output grammar.}
+The online action space contains silence, response, recall, and compact-memory update.
+For ordinary streaming turns, the assistant must open with \texttt{<think>...</think>} and end with exactly one terminal action: \texttt{</Silence>} when no query is ready, \texttt{</Response> answer} when the active query is answerable, or a Qwen tool call to \texttt{recall}.
+Recall is allowed only when the active query needs older visual evidence that is strictly earlier than the current chunk and is not already available from current frames, compact memory, response history, or a previous recall result.
+For future-dependent questions, the prompt instructs the model to stay silent until the requested visual trigger or event completion is observed.
+The parser marks malformed outputs, multiple terminal actions, future-looking recall intervals, and unsupported tool names as format/action errors.
 
-\paragraph{Tool and output schema.}
+\paragraph{Prompt templates.}
 Streaming turns expose only the recall function.
 Its arguments are absolute source-video seconds, \texttt{start\_time} and \texttt{end\_time}, defining a closed interval \([\texttt{start\_time},\texttt{end\_time}]\) that must be earlier than the current chunk.
-Compression is not a callable tool in the active protocol; compact-memory turns output bare \texttt{<m>} lines only.
-Thus the parser accepts four canonical outputs: silence, response, recall-tool, or compact-memory \texttt{<m>} lines.
-Malformed outputs, multiple terminal actions, future-looking recall intervals, and unsupported tool names are marked as format/action errors.
-
-\paragraph{Compact-memory prompt.}
 At a compression boundary, the user payload contains \texttt{OLD\_MEMORY}, \texttt{NEW\_CAPTIONS}, the covered latest span, and instructions to preserve useful old memory while covering new captions with honest time ranges.
-The compact-memory system prompt requires the model to return only XML memory lines of the form \texttt{<m t="start-end">one concise English summary</m>}.
+The compact-memory system prompt requires only XML memory lines of the form \texttt{<m t="start-end">one concise English summary</m>}.
 It forbids JSON, Markdown, answers, analysis, and tool calls, and it instructs the model to merge adjacent complete units rather than repartition old ranges.
 
-\paragraph{Masked SFT details.}
+\section{Training, Rewards, and Implementation Details}
+\label{app:implementation}
+
+\paragraph{Masked SFT.}
 Masked SFT uses the same bounded state as inference.
 The vision encoder is frozen, while the language model and multimodal projector are updated.
 Supervision is applied only to assistant-generated tokens; stream inputs, user queries, and environment observations are context only.
 We average losses separately over action tokens and state-update tokens, then combine them with the bucket-weighted objective in Section~4, so frequent silence/state-update spans do not dominate action learning.
 
-\paragraph{Stream-GDPO details.}
+\paragraph{Stream-GDPO setup.}
 Stream-GDPO starts from the SFT checkpoint and runs in the same chunk-level streaming environment used at inference.
 Each rollout contains one video stream with one or more timed questions.
-Question-level rewards cover answer outcome, format validity, and recall use, while the compact-memory reward is computed at the rollout level because memory quality is not tied to a single question.
 The policy is optimized on assistant action turns with group-normalized trajectory advantages.
+The rollout environment supplies current chunks, recall returns, and compact-memory boundaries, so training and inference share the same online state transitions.
 
-\paragraph{Hyperparameters.}
+\paragraph{Reward design.}
+Question-level rewards cover answer outcome, format validity, and recall use.
+Recall rewards encourage requesting the support interval only when historical visual evidence is needed, while avoiding future-looking ranges.
+The compact-memory reward is computed at the rollout level because memory quality is not tied to a single question.
+Together, these rewards train correctness, timing, evidence use, and long-range history maintenance within one streaming policy.
+
+\paragraph{Hyperparameters and compute.}
 WTI is initialized from Qwen3-VL-8B-Instruct.
-For SFT, we train chunk-level trajectories with the vision encoder frozen, update the language model and multimodal projector, and use learning rate \(1\times10^{-5}\).
-For Stream-GDPO, we train for about 60 optimization steps with veRL on 8 H20 GPUs, prompt batch size 64, 4 rollouts per prompt, actor learning rate \(1\times10^{-5}\), asymmetric clipping \(\epsilon_{\mathrm{low}}=0.2\), \(\epsilon_{\mathrm{high}}=0.28\), and action-branch loss weight 0.15.
-Videos are streamed as 1-second chunks at 2 FPS, and compact-and-reprefill is triggered when the active context reaches its boundary.
-
-\section{Artifact, Compute, and Responsible Use Details}
-\label{app:responsible_use}
-
-\paragraph{Artifacts and licenses.}
-We use public pretrained models, benchmarks, and software packages for research training and evaluation, including Qwen3-VL-8B-Instruct~\citep{qwen3vl2025}, StreamingBench~\citep{streamingbench2024}, OVO-Bench~\citep{ovobench2025}, Video-MME~\citep{videomme2025}, MLVU~\citep{mlvu2024}, LongVideoBench~\citep{longvideobench2024}, and veRL/HybridFlow~\citep{sheng2024hybridflow}.
-We cite the original creators of the pretrained models, benchmarks, baselines, datasets, and toolkits used in the paper, and follow their corresponding access terms and licenses.
-ChronoInteract-82K is intended for research on streaming video reasoning; any public release is subject to source-artifact terms and institutional approval.
-It should not be used for surveillance, biometric identification, or safety-critical decision making.
-
-\paragraph{Data screening and privacy.}
-The constructed data is derived from public video-derived sources and benchmark materials.
-We filter videos for clear visual content and temporally locatable events, and remove examples that fail QA-quality or causal-grounding checks.
-Because public video data may contain identifiable people or sensitive scenes, downstream users should preserve the research-only use case and avoid attempts to identify individuals.
-The study does not involve recruited human subjects, paid annotators, or new human-subject data collection.
-
-\paragraph{Compute and implementation.}
-The main WTI model has 8B parameters and is trained from Qwen3-VL-8B-Instruct.
-SFT freezes the vision encoder and updates the language model and multimodal projector; Stream-GDPO is run on 8 H20 GPUs with the hyperparameters in Appendix~\ref{app:implementation}.
-The reported Stream-GDPO run used about 60 optimization steps, with each step taking roughly 55 minutes on 8 H20 GPUs, for approximately 440 H20 GPU-hours.
+For SFT, we train chunk-level trajectories with learning rate \(1\times10^{-5}\).
+For Stream-GDPO, we train for about 60 optimization steps with veRL on 8 H20 GPUs.
+Table~\ref{tab:training_hyperparams} summarizes the main settings.
+The reported Stream-GDPO run used roughly 55 minutes per step on 8 H20 GPUs, for approximately 440 H20 GPU-hours.
 This accounting covers the main RL training run and excludes data generation, benchmark evaluation, and auxiliary diagnostics.
-We use veRL for reinforcement learning and source or official benchmark protocols for evaluation when available.
-Online evaluations are causal and do not expose future frames; offline long-video evaluations use the aggregate metrics of the source benchmarks.
 
-\paragraph{AI-assisted data construction.}
-As described in Section~4 and Appendix~\ref{app:data_stats}, Qwen3.5-397B is used to generate candidate questions, reference answers, and causal-consistency checks during ChronoInteract-82K construction.
-The authors verify the generated data, trajectories, claims, citations, and experimental results, and take full responsibility for the paper content.
+\begin{table}[t]
+  \centering
+  \small
+  \begin{tabular}{@{}ll@{}}
+    \hline
+    Setting & Value \\
+    \hline
+    Base model & Qwen3-VL-8B-Instruct \\
+    Stream chunking & 1-second chunks, 2 FPS \\
+    SFT learning rate & \(1\times10^{-5}\) \\
+    RL toolkit & veRL \\
+    RL GPUs & 8 H20 GPUs \\
+    Prompt batch size & 64 \\
+    Rollouts per prompt & 4 \\
+    Actor learning rate & \(1\times10^{-5}\) \\
+    Clipping & \(\epsilon_{\mathrm{low}}=0.2,\epsilon_{\mathrm{high}}=0.28\) \\
+    Action-branch loss weight & 0.15 \\
+    \hline
+  \end{tabular}
+  \caption{Main training and rollout hyperparameters.}
+  \label{tab:training_hyperparams}
+\end{table}
 
 \FloatBarrier
 
-\section{Additional Experimental Tables}
+\section{Evaluation Details and Additional Results}
 \label{app:additional_tables}
 
 \makeatletter
@@ -86,8 +88,19 @@ The authors verify the generated data, trajectories, claims, citations, and expe
 \setlength{\@dblfpbot}{0pt plus 1fil}
 \makeatother
 
+\paragraph{Evaluation protocols.}
+We evaluate StreamingBench on the real-time visual understanding split and report task-level categories following the source benchmark.
+For OVO-Bench, we report Real-Time, Backward, Forward, and weighted overall accuracy under the official trajectory weighting.
+Video-MME, MLVU, and LongVideoBench use their source aggregate metrics.
+All online evaluations are causal and do not expose future frames; offline/static baselines are restricted to the observed prefix in online benchmarks.
+Entries marked ``--'' denote runs that are unavailable in the frozen result set or diagnostic values that are not reported.
+
+\paragraph{Additional results.}
 Following the source benchmark papers, we keep task-level matrices in the appendix and use the main text for aggregate comparisons.
-Together, Tables~\ref{tab:streamingbench_train_ablation}--\ref{tab:offline_component_ablation} show broad GDPO gains and isolate how compact memory, temporal retrieval, and frame recall support history-dependent reasoning.
+Tables~\ref{tab:streamingbench_train_ablation} and~\ref{tab:ovobench_train_ablation} provide task-level training-objective ablations.
+Tables~\ref{tab:ovo_bt_component_ablation} and~\ref{tab:offline_component_ablation} report component ablations, with each configuration encoded in the variant name rather than separate Boolean columns.
+Table~\ref{tab:runtime_efficiency} reports visual recomputation and maximum latency for representative replay/cache settings.
+The GSPO/GDPO diagnostics in Figure~\ref{fig:gspo_gdpo_step_comparison} explain these tables: stronger recall triggering, request-range hits, and memory quality raise history-dependent and future-dependent scores.
 
 \begin{table*}[!t]
   \centering
@@ -114,61 +127,96 @@ Together, Tables~\ref{tab:streamingbench_train_ablation}--\ref{tab:offline_compo
   \scriptsize
   \setlength{\tabcolsep}{2.2pt}
   \resizebox{\textwidth}{!}{
-  \begin{tabular}{@{}lrrrrrrrrrrrrrrrr@{}}
+  \begin{tabular}{l|rrrrrr|r|rrr|r|rrr|r|r}
     \hline
-    Model \& Config & OCR & ACR & ATR & STU & FPD & OJR & Avg. RT & EPM & ASI & HLD & Avg. BT & REC & SSR & CRR & Avg. FT & Overall \\
+    \multicolumn{1}{c|}{Model \& Config} & OCR & ACR & ATR & STU & FPD & OJR & Avg. & EPM & ASI & HLD & Avg. & REC & SSR & CRR & Avg. & Overall \\
     \hline
     Base model & 75.2 & 58.7 & 72.4 & 57.3 & 70.3 & 59.2 & 64.8 & 56.6 & 69.6 & 38.7 & 54.4 & 38.8 & 67.6 & 52.5 & 63.5 & 61.4 \\
-    + SFT & 86.5 & 73.4 & 76.7 & 61.8 & 71.3 & 76.6 & 74.4 & 48.8 & 61.2 & -- & 52.9 & 19.6 & 67.7 & 41.7 & 43.0 & 58.0 \\
-    + GSPO & \textbf{92.6} & 72.5 & \textbf{82.8} & \textbf{68.5} & 75.3 & 69.0 & 76.8 & 59.6 & 57.4 & -- & 58.9 & 32.8 & 64.6 & 57.9 & 51.8 & 63.6 \\
+    + SFT & 86.5 & 73.4 & 76.7 & 61.8 & 71.3 & 76.6 & 74.2 & 48.8 & 61.2 & 78.0 & 60.3 & 19.6 & 67.7 & 41.7 & 60.9 & 65.7 \\
+    + GSPO & \textbf{92.6} & 72.5 & \textbf{82.8} & \textbf{68.5} & 75.3 & 69.0 & 76.2 & 59.6 & 57.4 & 80.6 & 65.3 & 32.8 & 64.6 & 57.9 & 60.7 & 67.8 \\
     \rowcolor{softblue}
     + GDPO & 90.6 & \textbf{76.2} & 78.5 & 66.9 & \textbf{76.2} & \textbf{75.5} & \textbf{76.9} & \textbf{67.0} & \textbf{74.3} & \textbf{82.8} & \textbf{73.4} & \textbf{42.2} & \textbf{73.1} & \textbf{77.1} & \textbf{70.0} & \textbf{73.6} \\
     \hline
   \end{tabular}}
-  \caption{OVO-Bench training objective ablation under the official 2227-trajectory weighting. The base Qwen3-VL-8B HLD value is replaced by the valid local HLD run, and GDPO uses the validated HLD result. ``--'' denotes an unfrozen local diagnostic value that is not reported.}
+  \caption{OVO-Bench training objective ablation under the official 2227-trajectory weighting. The base Qwen3-VL-8B HLD value is replaced by the valid local HLD run; SFT, GSPO, and GDPO use validated HLD counts of 145/186, 150/186, and 154/186, respectively.}
   \label{tab:ovobench_train_ablation}
 \end{table*}
 
-\begin{table*}[!t]
+\FloatBarrier
+
+\begin{table}[t]
   \centering
   \small
-  \setlength{\tabcolsep}{5pt}
-  \begin{tabular}{@{}llllrrrr@{}}
+  \setlength{\tabcolsep}{4pt}
+  \begin{tabular}{l|rrr|r}
     \hline
-    Variant & Memory & Retrieval & Recall & EPM & ASI & HLD & Avg. BT \\
+    Variant & EPM & ASI & HLD & Avg. \\
     \hline
     \rowcolor{softblue}
-    Full WTI & Yes & Yes & Yes & 67.0 & 74.3 & 82.8 & 73.4 \\
-    w/o compact memory & No & Yes & Yes & 62.0 & 60.8 & 65.6 & 62.8 \\
-    w/o temporal retrieval & Yes & No & No & 54.9 & 52.7 & 58.6 & 55.5 \\
-    memory only & Yes & No & No & 46.8 & 52.7 & 46.8 & 48.2 \\
+    Full WTI & 67.0 & 74.3 & 82.8 & 73.4 \\
+    w/o compact memory & 62.0 & 60.8 & 65.6 & 62.8 \\
+    w/o temporal retrieval & 54.9 & 52.7 & 58.6 & 55.5 \\
+    memory only & 46.8 & 52.7 & 46.8 & 48.2 \\
     \hline
   \end{tabular}
-  \caption{OVO-Bench BT component ablation over EPM, ASI, and HLD under the official 631-task weighting.}
+  \caption{OVO-Bench BT component ablation over EPM, ASI, and HLD.}
   \label{tab:ovo_bt_component_ablation}
-\end{table*}
+\end{table}
 
-\begin{table*}[!t]
+\begin{table}[t]
   \centering
   \scriptsize
-  \setlength{\tabcolsep}{3.5pt}
-  \resizebox{\textwidth}{!}{
-  \begin{tabular}{@{}lllllrrrr@{}}
+  \setlength{\tabcolsep}{2.4pt}
+  \begin{tabular}{@{}lrrrrrr@{}}
     \hline
-    Variant & Uniform Frames & Compact Memory & Temporal Retrieval & Frame Recall & Video-MME & MLVU & V-MME Long & LongVideoBench \\
+    Variant & V-MME & Short & Medium & Long & MLVU & LVB \\
     \hline
     \rowcolor{softblue}
-    Full WTI & Yes & Yes & Yes & Yes & 66.9 & 69.9 & 58.2 & 62.9 \\
-    uniform frames only & Yes & No & No & No & 63.5 & 66.7 & 56.3 & 61.9 \\
-    w/o compact memory & Yes & No & Yes & Yes & -- & 44.7 & -- & 61.6 \\
-    w/o temporal retrieval & Yes & Yes & No & No & -- & 54.2 & -- & 57.9 \\
-    w/o frame recall & No & Yes & Yes & No & 48.3 & 48.3 & 46.8 & 44.3 \\
-    memory only & No & Yes & No & No & 47.7 & 46.5 & 46.7 & 57.1 \\
-    retrieval text only & No & Yes & Yes & No & 48.3 & 48.2 & 46.8 & 36.2 \\
+    Full & 66.9 & 76.3 & 66.0 & 58.2 & 69.9 & 62.9 \\
+    w/o memory & 63.5 & 74.2 & 60.0 & 56.3 & 44.7 & 61.6 \\
+    w/o recall & 48.3 & 48.3 & 49.8 & 46.8 & 54.2 & 57.9 \\
+    memory only & 47.7 & 47.0 & 49.6 & 46.7 & 46.5 & 57.1 \\
     \hline
-  \end{tabular}}
-  \caption{Offline long-video component ablation. ``--'' denotes a run that is not available in the current frozen result set.}
+  \end{tabular}
+  \caption{Offline long-video component ablation with Video-MME short, medium, and long subsets.}
   \label{tab:offline_component_ablation}
-\end{table*}
+\end{table}
+
+\begin{table}[t]
+  \centering
+  \small
+  \setlength{\tabcolsep}{4pt}
+  \begin{tabular}{@{}lcc@{}}
+    \hline
+    Method & \shortstack{Visual\\recomp.} & \shortstack{Max\\latency} \\
+    \hline
+    Full prefix replay & 300.5$\times$ & 1.365s \\
+    Window replay & 7.95$\times$ & 0.440s \\
+    Window + KV cache & 1.00$\times$ & 0.562s \\
+    \rowcolor{softblue}
+    WTI full runtime & 1.00$\times$ & 0.985s \\
+    \hline
+  \end{tabular}
+  \caption{Runtime comparison. Visual recomputation is normalized to Window + KV cache.}
+  \label{tab:runtime_efficiency}
+\end{table}
 
 \FloatBarrier
+
+\section{Responsible Use, Reproducibility, and Case Studies}
+\label{app:responsible_use}
+
+\paragraph{Artifacts and licenses.}
+We use public pretrained models, benchmarks, and software packages for research training and evaluation, including Qwen3-VL-8B-Instruct~\citep{qwen3vl2025}, StreamingBench~\citep{streamingbench2024}, OVO-Bench~\citep{ovobench2025}, Video-MME~\citep{videomme2025}, MLVU~\citep{mlvu2024}, LongVideoBench~\citep{longvideobench2024}, and veRL/HybridFlow~\citep{sheng2024hybridflow}.
+We cite their creators, follow corresponding access terms and licenses, and treat WTI-82K as a research artifact whose release is subject to source-artifact terms and institutional approval.
+
+\paragraph{Intended use and privacy.}
+The constructed data is derived from public video-derived sources and benchmark materials, then filtered for clear visual content, temporally locatable events, and QA/causal-grounding quality.
+Because such data may contain identifiable people or sensitive scenes, downstream use should remain research-only and avoid surveillance, biometric identification, attempts to identify individuals, or safety-critical decision making.
+The study does not involve recruited human subjects, paid annotators, or new human-subject data collection.
+
+\paragraph{AI-assisted data construction.}
+As described in Section~4 and Appendix~\ref{app:data_stats}, Qwen3.5-397B is used for candidate question generation, answer synthesis, and causal-consistency checks during WTI-82K construction; the authors verify the generated data, trajectories, claims, citations, and results.
+
+\paragraph{Qualitative cases.}
+Figure~\ref{fig:chronostream-motivation} illustrates the three behaviors checked by qualitative cases: active-window answering, historical recall after evidence leaves context, and silence until future evidence becomes available.

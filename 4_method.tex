@@ -3,7 +3,7 @@
 \begin{figure*}[t]
   \centering
   \includegraphics[width=\textwidth]{figures/figure_method_pipeline.png}
-  \caption{Overview of Watch-Think-Interact. At each stream step, the agent watches the current chunk, updates a thinking state, selects silence, response, or recall, and writes compact time-indexed memory at context boundaries; Stream-GDPO optimizes the resulting streaming trajectories.}
+  \caption{Overview of Watch-Think-Interact. WTI treats streaming video reasoning as a bounded online loop in which the model watches each incoming chunk, updates a thinking state, and decides whether to stay silent, answer, or recall a past interval. Compact time-indexed memory carries history beyond the active window, and Stream-GDPO optimizes the resulting interaction trajectory.}
   \label{fig:method_overview}
 \end{figure*}
 
@@ -88,13 +88,6 @@ The bucket-weighted SFT objective is
 \end{equation}
 This stage trains the bounded-context protocol.
 
-\begin{figure*}[t]
-  \centering
-  \includegraphics[width=\textwidth]{figures/figure_data_pipeline.png}
-  \caption{ChronoInteract-82K construction pipeline. Videos are standardized, chunk-level evidence chains are aligned, evidence-grounded QAs are generated, query and answer times are placed on the streaming timeline, and QA quality and causal consistency are verified.}
-  \label{fig:data_pipeline}
-\end{figure*}
-
 \input{tables_ovo_offline_main}
 
 \subsection{Stream-GDPO Reinforcement Learning}
@@ -167,11 +160,18 @@ The policy is optimized with the clipped objective
 We minimize \(\mathcal L_{\mathrm{GDPO}}=-\mathcal J_{\mathrm{GDPO}}\).
 This keeps credit assignment at the trajectory level, without estimating separate turn- or token-level advantages.
 
-\section{ChronoInteract-82K}
+\section{WTI-82K}
 \label{sec:data}
 
+\begin{figure*}[t]
+  \centering
+  \includegraphics[width=\textwidth]{figures/figure_data_pipeline.png}
+  \caption{WTI-82K construction pipeline. WTI-82K converts videos into streaming-causal trajectories by standardizing clips, aligning chunk-level evidence chains, generating evidence-grounded QAs, placing query and answerable times, and verifying causal support. The resulting samples cover Real-Time, Backward Tracing, and Proactive interactions used to train WTI under the same timing constraints as inference.}
+  \label{fig:data_pipeline}
+\end{figure*}
+
 Prior online video benchmarks and streaming instruction datasets define timestamped queries, multi-turn interaction, proactive responses, and streaming task annotations~\citep{ovobench2025,svbench2025,streambridge2025,streamo2026}.
-Building on this setting, we construct ChronoInteract-82K, a time-aware dataset for long-horizon multi-turn streaming video reasoning.
+Building on this setting, we construct WTI-82K, a time-aware dataset for long-horizon multi-turn streaming video reasoning.
 It contains 82,335 finalized questions in 4,812 streaming trajectories.
 Each sample aligns video chunks, supporting evidence intervals, query time, earliest answerable moment, and the causal context available at that moment.
 As shown in Figure~\ref{fig:data_pipeline}, our pipeline extracts temporal evidence, generates evidence-grounded questions, places each query and answerable moment on the streaming timeline, and verifies causal consistency before retention.

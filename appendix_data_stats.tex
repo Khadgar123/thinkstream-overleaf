@@ -1,8 +1,8 @@
-\section{ChronoInteract-82K Details}
+\section{WTI-82K Data Details}
 \label{app:data_stats}
 
 \paragraph{Construction pipeline.}
-ChronoInteract-82K is built from public video-derived sources and benchmark materials.
+WTI-82K is built from public video-derived sources and benchmark materials.
 We first filter videos for clear visual content and temporally locatable events, then extract chunk-level evidence and link facts that persist or change across chunks.
 Given these aligned evidence chains, we use Qwen3.5-397B to generate candidate questions and reference answers from local facts and cross-chunk evidence.
 Each candidate is assigned a query timestamp, an earliest answerable timestamp, and supporting evidence intervals, and is retained only after QA-quality and causal-consistency checks verify that the answer is supported by the causal context available at the answerable moment.
@@ -31,6 +31,17 @@ Each trajectory contains 17.1 questions on average.
   \caption{Statistics of the constructed streaming interaction data. Q/T denotes the average number of questions per trajectory.}
   \label{tab:data_stats}
 \end{table}
+
+\paragraph{Video duration distribution.}
+Figure~\ref{fig:data_video_duration} reports the source-video duration distribution over the 4,800 unique videos.
+Following common streaming-video dataset statistics, we group videos into five duration ranges and annotate each bar with both the number of videos and its percentage.
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=0.96\columnwidth]{figures/figure_video_duration_distribution.pdf}
+  \caption{Video duration distribution of WTI-82K, counted over unique source videos.}
+  \label{fig:data_video_duration}
+\end{figure}
 
 \paragraph{Question distribution.}
 Figure~\ref{fig:data_question_distribution} shows the distribution of constructed questions by streaming mode and task focus.

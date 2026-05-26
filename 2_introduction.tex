@@ -1,7 +1,7 @@
 \begin{figure*}[t]
   \centering
   \includegraphics[width=\textwidth]{figures/figure_motivation_shared_stream.png}
-  \caption{Motivation and method comparison for Watch-Think-Interact. Top: a shared streaming video with current, past, and future questions. Bottom: response-state methods lose old turns and bounded compression may blur earlier evidence, while WTI maintains multi-turn state, compact time-indexed memory, and time-bounded recall.}
+  \caption{Motivation for Watch-Think-Interact. Streaming video reasoning must answer asynchronous queries with a bounded active window, where future frames are unavailable and earlier evidence may fall out of view. WTI keeps compact time-indexed memory and recalls history for waiting, active-window answering, and historical recall.}
   \label{fig:chronostream-motivation}
 \end{figure*}
 
@@ -30,7 +30,7 @@ As the stream unfolds, the model updates a chunk-level thinking state and choose
 When context reaches its limit, it performs compact state transfer by rewriting observed history into time-indexed memory lines and continuing from the compact state.
 Together, these actions form a single online trajectory that lets the model update state, make interaction decisions, and process potentially unbounded streams under a fixed context budget.
 
-To train Watch-Think-Interact, we construct ChronoInteract-82K, a dataset of chunk-level streaming interaction trajectories built under strict streaming causality.
+To train Watch-Think-Interact, we construct WTI-82K, a dataset of chunk-level streaming interaction trajectories built under strict streaming causality.
 These trajectories supervise interaction decisions and context-bounded state updates.
 SFT initializes the interaction format, while Stream-GDPO optimizes online rollouts for answer correctness, response timing, evidence use, and long-range history maintenance.
 Experiments show that WTI reaches 83.3\% on StreamingBench~\citep{streamingbench2024} and 73.6\% on OVO-Bench~\citep{ovobench2025}, achieving state-of-the-art streaming performance while preserving competitive long-video understanding~\citep{longvideobench2024}.
@@ -38,7 +38,7 @@ Experiments show that WTI reaches 83.3\% on StreamingBench~\citep{streamingbench
 In summary, our contributions are as follows:
 \begin{itemize}[leftmargin=*, itemsep=1pt, topsep=1pt, parsep=1pt, partopsep=1pt]
   \item We introduce Watch-Think-Interact, a closed-loop framework unifying watching, thinking, response timing, historical recall, and compact state transfer for long-horizon multi-turn streaming video reasoning under bounded context.
-  \item We construct ChronoInteract-82K, aligning video chunks, asynchronous queries, answerable moments, and evidence dependencies on a shared timeline for streaming interaction training under causal timing.
+  \item We construct WTI-82K, aligning video chunks, asynchronous queries, answerable moments, and evidence dependencies on a shared timeline for streaming interaction training under causal timing.
   \item We propose Stream-GDPO, a trajectory-level GDPO objective optimizing answer correctness, response timing, evidence use, and long-range history maintenance in the same chunk-level online environment.
   \item WTI achieves state-of-the-art streaming performance, reaching 83.3\% on StreamingBench and 73.6\% on OVO-Bench, with ablations verifying the roles of recall, compact state transfer, and training design.
 \end{itemize}
