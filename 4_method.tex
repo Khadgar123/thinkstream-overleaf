@@ -40,14 +40,16 @@ Historical evidence outside the active window is carried by time-indexed memory 
 Each step combines a streaming thinking update with an interaction decision.
 The model first emits a short update \(z_t\) and then selects one interaction action:
 \begin{equation}
+  \begin{aligned}
   a_t\in\mathcal A_{\mathrm{int}}
-  =\{\mathrm{silence},\mathrm{response}(q_r,y)\}.
+  =\{&\mathrm{silence},\mathrm{response}(q_r,y),\\
+     &\mathrm{recall}(\tau_s,\tau_e)\}.
+  \end{aligned}
 \end{equation}
-The action \(\mathrm{silence}\) delays output, while \(\mathrm{response}\) commits an answer to the current question.
+The action \(\mathrm{silence}\) delays output, \(\mathrm{response}\) commits an answer to the current question, and \(\mathrm{recall}\) requests evidence from a previously observed interval.
 
-When past visual evidence is needed, the agent may invoke a recall tool to inspect a previously observed interval.
-The call \(\mathrm{recall}(\tau_s,\tau_e)\) is valid only when \(\tau_s\le\tau_e<t\).
-The environment returns evidence from this interval, which is added to the current decision context before the agent either answers or remains silent at that step.
+A recall action is valid only when \(\tau_s\le\tau_e<t\).
+The environment returns evidence from this interval as an observation, which is added to the context for the subsequent assistant decision.
 
 At a memory boundary \(b\), let \(Z_b\) collect the streaming records since the previous boundary.
 The model rewrites the pre-update memory into a new compact memory:

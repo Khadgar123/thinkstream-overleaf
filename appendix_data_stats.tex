@@ -2,17 +2,31 @@
 \label{app:data_stats}
 
 \paragraph{Construction pipeline.}
-WTI-82K is built from public video-derived sources and benchmark materials.
-We first filter videos for clear visual content and temporally locatable events, then extract chunk-level evidence and link facts that persist or change across chunks.
-Given these aligned evidence chains, we use Qwen3.5-397B to generate candidate questions and reference answers from local facts and cross-chunk evidence.
-Each candidate is assigned a query timestamp, an earliest answerable timestamp, and supporting evidence intervals, and is retained only after QA-quality and causal-consistency checks verify that the answer is supported by the causal context available at the answerable moment.
+WTI-82K is built from public video-derived sources and benchmark materials, then converted into chunk-level streaming interaction trajectories.
+
+\noindent\textbf{Video filtering and normalization.}
+We retain videos with clear visual content and temporally locatable events, normalize them into 1-second chunks, and extract frames at 2 FPS.
+This gives every observation a shared source-video timeline and lets later stages attach query, answer, recall, and memory events to exact chunk ranges.
+
+\noindent\textbf{Chunk-level evidence alignment.}
+For each normalized video, we identify local facts, changing states, repeated events, OCR cues, object relations, and cross-chunk dependencies.
+The resulting evidence chains specify which visual chunks support immediate answers, which facts leave the active visual window, and which questions must wait for future observations.
+
+\noindent\textbf{Question synthesis and timing.}
+Given the aligned evidence chains, we use Qwen3.5-397B to generate candidate questions and reference answers under streaming causality.
+Each candidate receives a query timestamp, an earliest answerable timestamp, supporting evidence intervals, an answer form, and a temporal role.
+This annotation supports current perception, historical recall, future-dependent waiting, and multi-turn state tracking within one trajectory.
+
+\noindent\textbf{Quality control and splitting.}
+We filter candidates with QA-quality and causal-consistency checks, removing samples whose answer is unsupported at the answerable moment or whose support interval conflicts with the stream timeline.
+The retained questions are grouped into multi-turn trajectories and split into SFT, RL, validation, and test subsets.
 
 \paragraph{Statistics.}
 Table~\ref{tab:data_stats} summarizes the current structured export.
 It contains 4,812 streaming trajectories from 4,800 unique videos, with 82,335 finalized questions selected from 128,625 candidate task cards.
 Each trajectory contains 17.1 questions on average.
 
-\begin{table}[t]
+\begin{table}[H]
   \centering
   \small
   \begin{tabular}{@{}lrrrr@{}}
@@ -32,23 +46,48 @@ Each trajectory contains 17.1 questions on average.
   \label{tab:data_stats}
 \end{table}
 
-\paragraph{Video duration distribution.}
-Figure~\ref{fig:data_video_duration} reports the source-video duration distribution over 4,812 streaming trajectories, with each bar showing the count and percentage for one duration range.
+\paragraph{Temporal-demand analysis.}
+Table~\ref{tab:data_temporal_demand} summarizes the interaction demands induced by the finalized questions.
+About half of the questions are answerable from current visual evidence, while the rest require historical evidence, future observations, or multi-turn state tracking.
+This distribution matches the three online behaviors targeted by WTI: answering from the active window, recalling earlier evidence after it leaves context, and waiting until future evidence becomes available.
 
-\begin{figure}[t]
+\begin{table}[H]
   \centering
-  \includegraphics[width=0.96\columnwidth]{figures/figure_video_duration_distribution.pdf}
-  \caption{Video duration distribution of WTI-82K, counted over streaming trajectories.}
-  \label{fig:data_video_duration}
-\end{figure}
+  \small
+  \begin{tabular}{@{}lrr@{}}
+    \hline
+    Temporal demand & Questions & Share \\
+    \hline
+    Current perception & 41,261 & 50.1\% \\
+    Historical memory & 25,668 & 31.2\% \\
+    Future-dependent & 8,595 & 10.4\% \\
+    Multi-state & 3,915 & 4.8\% \\
+    Temporal reasoning & 2,896 & 3.5\% \\
+    \hline
+    \rowcolor{softblue}
+    Total & 82,335 & 100.0\% \\
+    \hline
+  \end{tabular}
+  \caption{Temporal-demand distribution of finalized WTI-82K questions.}
+  \label{tab:data_temporal_demand}
+\end{table}
 
-\paragraph{Question distribution.}
-Figure~\ref{fig:data_question_distribution} shows the distribution of constructed questions by streaming mode and task focus.
+\paragraph{Dataset visualizations.}
+Figure~\ref{fig:data_appendix_distributions} reports the source-video duration distribution over 4,812 streaming trajectories and the distribution of constructed questions by streaming mode and task focus.
+The duration chart shows the count and percentage for each duration range.
 The inner ring groups examples into Real-Time, Backward Tracing, and Proactive interaction modes, while the outer ring shows the corresponding task focus under each mode.
 
-\begin{figure}[t]
+\begin{figure*}[t]
   \centering
-  \includegraphics[width=0.92\columnwidth]{figures/figure_qa_distribution.png}
-  \caption{Distribution of constructed questions by streaming mode and task focus.}
-  \label{fig:data_question_distribution}
-\end{figure}
+  \begin{minipage}[t]{0.46\textwidth}
+    \centering
+    \includegraphics[width=0.94\linewidth]{figures/figure_video_duration_distribution.pdf}
+  \end{minipage}
+  \hfill
+  \begin{minipage}[t]{0.46\textwidth}
+    \centering
+    \includegraphics[width=0.78\linewidth]{figures/figure_qa_distribution.png}
+  \end{minipage}
+  \caption{WTI-82K data distributions. Left: video duration distribution counted over streaming trajectories. Right: question distribution by streaming mode and task focus.}
+  \label{fig:data_appendix_distributions}
+\end{figure*}
