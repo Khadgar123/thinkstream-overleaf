@@ -96,7 +96,7 @@ Masked SFT raises StreamingBench from 74.1\% to 75.3\% and OVO-RT from 64.7\% to
 However, OVO-BT improves more modestly to 60.3\%, and OVO-FT reaches 60.9\%, below the base model's 63.5\%.
 This indicates that imitation alone improves recent-prefix perception but does not sufficiently optimize recall timing, compact-memory quality, or exact delayed answering for future-dependent queries.
 
-Figure~\ref{fig:gspo_gdpo_step_comparison} explains why Stream-GDPO improves this behavior over GSPO.
+Figure~\ref{fig:gspo_gdpo_step_comparison} explains why Stream-GDPO improves this behavior over GSPO~\citep{zheng2025gspo}.
 Although raw curves are noisy, GDPO maintains stronger recall triggering, request-range hit rate, and memory quality.
 Higher memory quality suggests less information loss during compression, while better range hits mean recall localizes support intervals more precisely.
 Accordingly, GDPO raises OVO-BT from 65.3\% to 73.4\% and OVO-FT from 60.7\% to 70.0\% over GSPO, lifting the overall score to 73.6\%.
